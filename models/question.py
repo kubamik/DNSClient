@@ -68,3 +68,6 @@ class Question:
         if not isinstance(other, Question):
             return False
         return self._qname == other._qname and self._qtype == other._qtype and self._qclass == other._qclass
+
+    def __hash__(self):
+        return hash((self._qname, self._qtype, self._qclass))

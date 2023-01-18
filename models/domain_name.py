@@ -25,6 +25,14 @@ class DomainName:
     def labels(self) -> List[str]:
         return self._labels
 
+    def cut(self, n: int) -> DomainName:
+        if n > len(self._labels):
+            raise ValueError("Cannot cut more labels than there are")
+        return DomainName('.'.join(self._labels[n:]))
+
+    def parent(self) -> DomainName:
+        return self.cut(1)
+
     def __bytes__(self):
         arr = bytearray()
         for label in self._labels:
@@ -68,3 +76,9 @@ class DomainName:
         if not isinstance(other, DomainName):
             return False
         return self._name == other._name
+
+    def __hash__(self):
+        return hash(self._name)
+
+    def __repr__(self):
+        return self._name

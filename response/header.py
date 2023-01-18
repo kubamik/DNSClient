@@ -44,7 +44,8 @@ class ResponseHeader(Header):
 
     def validate(self) -> None:
         if self._rcode is not None and self._rcode != RCODE.NO_ERROR:
-            raise DNSError("Server responded with error code: {}".format(self._rcode))
+            raise DNSError("Server responded with error code: {} '{}'".format(self._rcode, self._rcode.name),
+                           self._rcode, self._aa)
         if self._qr is None or self._opcode is None or self._rcode is None or self._z != 0:
             raise MalformedDNSResponseException("Invalid header")
         self._valid = True

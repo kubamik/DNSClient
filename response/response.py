@@ -75,6 +75,9 @@ class Response:
         self._additional.extend(other.additional)
         self._header.extend(other.header)
 
+    def add_previous_answer(self, answers: List[RR]):
+        self._answer = answers + self._answer
+
     @property
     def header(self):
         return self._header
@@ -95,7 +98,6 @@ class Response:
     def additional(self):
         return self._additional
 
-    @property
     def validate(self):
         self._header.validate()
         if self._header.qr != QR.RESPONSE:

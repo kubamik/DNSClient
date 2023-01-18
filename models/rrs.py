@@ -6,7 +6,9 @@ from typing import Type, Union, Optional
 
 from models import TYPE, CLASS, DomainName
 from models.constants.rr_constants import RR_TYPE_SECTION, RR_CLASS_SECTION, RR_TTL_SECTION, RR_RDLENGTH_SECTION, \
-    RR_RDATA_SECTION, RR_FIXED_LENGTH, MX_PREFERENCE_SECTION
+    RR_RDATA_SECTION, RR_FIXED_LENGTH, MX_PREFERENCE_SECTION, SOA_SERIAL_SECTION_LENGTH, SOA_REFRESH_SECTION_LENGTH, \
+    SOA_RETRY_SECTION_LENGTH, SOA_EXPIRE_SECTION_LENGTH, SOA_MINIMUM_SECTION_LENGTH, CAA_FLAGS_SECTION, \
+    CAA_TAG_LENGTH_SECTION, CAA_TAG_SECTION
 
 
 class RR:
@@ -46,7 +48,7 @@ class RR:
 
     def __repr__(self):
         type_name = self._type if not isinstance(self._type, TYPE) else self._type.name
-        return f'{self._name} {type_name} {self._class.name} {timedelta(seconds=self._ttl)}'
+        return f'{self._name} {type_name} {self._class.name} {timedelta(seconds=self._ttl)} {self._rdata}'
 
     @property
     def name(self):
@@ -237,13 +239,172 @@ class AAAA(RR):
         return self._address
 
 
+class DNAME(RR):
+    _type = TYPE.CNAME
+    _dname: DomainName
+
+    def __init__(self, name: DomainName, class_: CLASS, ttl: int, rdlength: int, cname: DomainName):
+        super().__init__(name, self.type_, class_, ttl, rdlength)
+        self._dname = cname
+
+    @classmethod
+    def from_bytes(cls, name: DomainName, payload: bytes, original: bytes) -> RR:
+        class_ = CLASS.from_bytes(payload[RR_CLASS_SECTION])
+        ttl = int.from_bytes(payload[RR_TTL_SECTION], 'big')
+        rdlength = int.from_bytes(payload[RR_RDLENGTH_SECTION], 'big')
+        rdata = payload[RR_RDATA_SECTION.start: RR_RDATA_SECTION.start + rdlength]
+        cname, _ = DomainName.from_bytes(rdata, original)
+        return cls(name, class_, ttl, rdlength, cname)
+
+    def __repr__(self):
+        return f'{self._name} {self.type_.name} {self._class.name} {timedelta(self._ttl)} {self._dname}'
+
+    @property
+    def dname(self) -> DomainName:
+        return self._dname
+
+
+class SOA(RR):
+    _type = TYPE.SOA
+    _mname: DomainName
+    _rname: DomainName
+    _serial: int
+    _refresh: int
+    _retry: int
+    _expire: int
+    _minimum: int
+
+    def __init__(self, name: DomainName, class_: CLASS, ttl: int, rdlength: int, mname: DomainName, rname: DomainName,
+                 serial: int, refresh: int, retry: int, expire: int, minimum: int):
+        super().__init__(name, self.type_, class_, ttl, rdlength)
+        self._mname = mname
+        self._rname = rname
+        self._serial = serial
+        self._refresh = refresh
+        self._retry = retry
+        self._expire = expire
+        self._minimum = minimum
+
+    @classmethod
+    def from_bytes(cls, name: DomainName, payload: bytes, original: bytes) -> RR:
+        class_ = CLASS.from_bytes(payload[RR_CLASS_SECTION])
+        ttl = int.from_bytes(payload[RR_TTL_SECTION], 'big')
+        rdlength = int.from_bytes(payload[RR_RDLENGTH_SECTION], 'big')
+        rdata = payload[RR_RDATA_SECTION.start: RR_RDATA_SECTION.start + rdlength]
+        mname, length = DomainName.from_bytes(rdata, original)
+        rname, rname_length = DomainName.from_bytes(rdata[length:], original)
+        length += rname_length
+        serial = int.from_bytes(rdata[length: length + SOA_SERIAL_SECTION_LENGTH], 'big')
+        length += SOA_SERIAL_SECTION_LENGTH
+        refresh = int.from_bytes(rdata[length: length + SOA_REFRESH_SECTION_LENGTH], 'big')
+        length += SOA_REFRESH_SECTION_LENGTH
+        retry = int.from_bytes(rdata[length: length + SOA_RETRY_SECTION_LENGTH], 'big')
+        length += SOA_RETRY_SECTION_LENGTH
+        expire = int.from_bytes(rdata[length: length + SOA_EXPIRE_SECTION_LENGTH], 'big')
+        length += SOA_EXPIRE_SECTION_LENGTH
+        minimum = int.from_bytes(rdata[length: length + SOA_MINIMUM_SECTION_LENGTH], 'big')
+        return cls(name, class_, ttl, rdlength, mname, rname, serial, refresh, retry, expire, minimum)
+
+    def __repr__(self):
+        rname = self._rname.labels[0].replace('\\', '') + '@' + '.'.join(self._rname.labels[1:])
+        return f'{self._name} {self.type_.name} {self._class.name} {timedelta(seconds=self._ttl)} {self._mname} ' \
+               f'{rname} {self._serial} {timedelta(seconds=self._refresh)} {timedelta(seconds=self._retry)}' \
+               f' {timedelta(seconds=self._expire)} {timedelta(seconds=self._minimum)}'
+
+    @property
+    def mname(self) -> DomainName:
+        return self._mname
+
+    @property
+    def rname(self) -> DomainName:
+        return self._rname
+
+    @property
+    def serial(self) -> int:
+        return self._serial
+
+    @property
+    def refresh(self) -> int:
+        return self._refresh
+
+    @property
+    def retry(self) -> int:
+        return self._retry
+
+    @property
+    def expire(self) -> int:
+        return self._expire
+
+    @property
+    def minimum(self) -> int:
+        return self._minimum
+
+
+class CAA(RR):
+    _type = TYPE.CAA
+    flags: int
+    tag: str
+    value: str
+
+    def __init__(self, name: DomainName, class_: CLASS, ttl: int, rdlength: int, flags: int, tag: str, value: str):
+        super().__init__(name, self.type_, class_, ttl, rdlength)
+        self.flags = flags
+        self.tag = tag
+        self.value = value
+
+    @classmethod
+    def from_bytes(cls, name: DomainName, payload: bytes, original: bytes) -> RR:
+        class_ = CLASS.from_bytes(payload[RR_CLASS_SECTION])
+        ttl = int.from_bytes(payload[RR_TTL_SECTION], 'big')
+        rdlength = int.from_bytes(payload[RR_RDLENGTH_SECTION], 'big')
+        rdata = payload[RR_RDATA_SECTION.start: RR_RDATA_SECTION.start + rdlength]
+        flags = int.from_bytes(rdata[CAA_FLAGS_SECTION], 'big')
+        tag_length = int.from_bytes(rdata[CAA_TAG_LENGTH_SECTION], 'big')
+        tag = rdata[CAA_TAG_SECTION.start: CAA_TAG_SECTION.start + tag_length].decode('utf-8')
+        value = rdata[CAA_TAG_SECTION.start + tag_length:].decode('utf-8')
+        return cls(name, class_, ttl, rdlength, flags, tag, value)
+
+    def __repr__(self):
+        return f'{self._name} {self.type_.name} {self._class.name} {timedelta(seconds=self._ttl)} ' \
+               f'{str(bin(self.flags))[2:]} {self.tag} {self.value}'
+
+
+class PTR(RR):
+    _type = TYPE.PTR
+    _ptrdname: DomainName
+
+    def __init__(self, name: DomainName, class_: CLASS, ttl: int, rdlength: int, ptrdname: DomainName):
+        super().__init__(name, self.type_, class_, ttl, rdlength)
+        self._ptrdname = ptrdname
+
+    @classmethod
+    def from_bytes(cls, name: DomainName, payload: bytes, original: bytes) -> RR:
+        class_ = CLASS.from_bytes(payload[RR_CLASS_SECTION])
+        ttl = int.from_bytes(payload[RR_TTL_SECTION], 'big')
+        rdlength = int.from_bytes(payload[RR_RDLENGTH_SECTION], 'big')
+        rdata = payload[RR_RDATA_SECTION.start: RR_RDATA_SECTION.start + rdlength]
+        ptrdname, length = DomainName.from_bytes(rdata, original)
+        return cls(name, class_, ttl, rdlength, ptrdname)
+
+    def __repr__(self):
+        return f'{self._name} {self.type_.name} {self._class.name} {timedelta(seconds=self._ttl)} {self._ptrdname}'
+
+    @property
+    def ptrdname(self) -> DomainName:
+        return self._ptrdname
+
+
 type_to_RR = {
     TYPE.A: A,
     TYPE.NS: NS,
     TYPE.CNAME: CNAME,
     TYPE.MX: MX,
     TYPE.TXT: TXT,
-    TYPE.AAAA: AAAA
+    TYPE.AAAA: AAAA,
+    TYPE.DNAME: DNAME,
+    TYPE.SOA: SOA,
+    TYPE.CAA: CAA,
+    TYPE.PTR: PTR
 }
 
 

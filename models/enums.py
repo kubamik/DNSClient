@@ -24,6 +24,8 @@ class TYPE(ByteEnum):
     MX = 15
     TXT = 16
     AAAA = 28
+    DNAME = 39
+    CAA = 257
 
 
 class QTYPEAddition(ByteEnum):
